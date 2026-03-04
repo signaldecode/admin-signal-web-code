@@ -147,14 +147,28 @@ const saveAllChanges = async () => {
       deletedIds: deletedIds.value,
     }
 
+    // 디버깅: 이미지 파일 및 payload 확인
+    console.log('=== 카테고리 sync 디버깅 ===')
+    console.log('이미지 파일 수:', imageFiles.length)
+    console.log('이미지 파일들:', imageFiles)
+    console.log('payload:', JSON.stringify(payload, null, 2))
+    console.log('categories 원본:', categories.value)
+
     // FormData 생성
     const formData = new FormData()
     formData.append('data', JSON.stringify(payload))
 
     // 이미지 파일들 추가 (백엔드 필드명: categoryImages)
-    imageFiles.forEach((file) => {
+    imageFiles.forEach((file, index) => {
+      console.log(`이미지 ${index}:`, file.name, file.size, file.type)
       formData.append('categoryImages', file)
     })
+
+    // FormData 내용 확인
+    console.log('FormData entries:')
+    for (const [key, value] of formData.entries()) {
+      console.log(`  ${key}:`, value instanceof File ? `File(${value.name}, ${value.size}bytes)` : value)
+    }
 
     const response = await $api.putFormData('/admin/categories/sync', formData)
     const responseData = response?.data || response
@@ -391,10 +405,16 @@ const handleImageSelect = (event) => {
 
 // 이미지 삭제
 const removeImage = (category) => {
+  console.log('=== 이미지 삭제 ===')
+  console.log('삭제 전 category:', JSON.parse(JSON.stringify(category)))
+
   if (category.image?.preview && category.image?.isNew) {
     URL.revokeObjectURL(category.image.preview)
   }
   category.image = null
+
+  console.log('삭제 후 category:', JSON.parse(JSON.stringify(category)))
+  console.log('삭제 후 category.image:', category.image)
 }
 
 // 이미지 URL 가져오기 (미리보기 또는 서버 URL)
@@ -478,7 +498,8 @@ onMounted(() => {
                 </svg>
               </button>
 
-              <!-- 이미지 미리보기 / 업로드 버튼 -->
+              <!-- 이미지 미리보기 / 업로드 버튼 (주석처리됨) -->
+              <!--
               <div class="relative group">
                 <div
                   v-if="getImageUrl(parent)"
@@ -490,7 +511,6 @@ onMounted(() => {
                     alt="카테고리 이미지"
                     class="w-full h-full object-cover"
                   >
-                  <!-- 호버 시 삭제/변경 버튼 -->
                   <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                     <button
                       type="button"
@@ -526,6 +546,7 @@ onMounted(() => {
                   </svg>
                 </button>
               </div>
+              -->
 
               <!-- 수정 모드 -->
               <template v-if="isEditing(parent)">
@@ -560,7 +581,7 @@ onMounted(() => {
                 </span>
                 <button
                   type="button"
-                  class="p-2 text-neutral-400 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition-colors"
+                  class="hidden md:block p-2 text-neutral-400 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition-colors"
                   title="수정"
                   @click="startEdit(parent)"
                 >
@@ -570,7 +591,7 @@ onMounted(() => {
                 </button>
                 <button
                   type="button"
-                  class="p-2 text-neutral-400 hover:text-error-500 hover:bg-error-50 rounded-lg transition-colors"
+                  class="hidden md:block p-2 text-neutral-400 hover:text-error-500 hover:bg-error-50 rounded-lg transition-colors"
                   title="삭제"
                   @click="confirmDelete(parent, null)"
                 >

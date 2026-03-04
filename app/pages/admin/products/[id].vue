@@ -678,6 +678,12 @@ const fetchProduct = async () => {
     const response = await $api.get(`/admin/products/${productId.value}`)
     const data = response.data || response
 
+    // 디버깅: API 응답에서 guide/policy 확인
+    console.log('=== 상품 조회 API 응답 ===')
+    console.log('guide:', data.guide)
+    console.log('policy:', data.policy)
+    console.log('전체 응답:', data)
+
     // 백엔드 응답 데이터를 현재 product 구조에 매핑
     product.value = {
       name: data.name || '',

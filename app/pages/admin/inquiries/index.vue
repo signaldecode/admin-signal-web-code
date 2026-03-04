@@ -1,6 +1,6 @@
 <script setup>
 /**
- * 1:1 문의 목록 페이지
+ * 제작 문의 목록 페이지
  * GET /admin/inquiries
  * - status: PENDING | ANSWERED | CLOSED
  * - keyword: string
@@ -65,7 +65,7 @@ const fetchInquiryList = async () => {
   } catch (error) {
     uiStore.showToast({
       type: 'error',
-      message: error.message || '1:1 문의 목록을 불러오는데 실패했습니다.',
+      message: error.message || '제작 문의 목록을 불러오는데 실패했습니다.',
     })
     inquiryList.value = []
     totalItems.value = 0
@@ -138,10 +138,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <LayoutListPage title="1:1 문의 관리">
+  <LayoutListPage title="제작 문의 관리">
     <template #description>
-      고객 1:1 문의에 답변합니다.
-      <span v-if="pendingCount > 0" class="text-warning-600 font-medium">(답변 대기 {{ pendingCount }}건)</span>
+      고객 제작 문의가 등록되면 여기에 표시됩니다.
+      <span v-if="pendingCount > 0" class="text-warning-600 font-medium"> (답변 대기 {{ pendingCount }}건)</span>
     </template>
 
     <template #filters>
@@ -186,8 +186,8 @@ onMounted(() => {
       :items="inquiryList"
       :selected-ids="selectedIds"
       selectable
-      empty-title="등록된 1:1 문의가 없습니다"
-      empty-description="고객 1:1 문의가 등록되면 여기에 표시됩니다."
+      empty-title="등록된 제작 문의가 없습니다"
+      empty-description="고객 제작 문의가 등록되면 여기에 표시됩니다."
       @select="handleSelect"
       @select-all="handleSelectAll"
       @row-click="goToDetail"

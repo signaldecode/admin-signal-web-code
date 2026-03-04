@@ -52,6 +52,7 @@ const availableNavItems = ref([
   { id: 'review', label: '리뷰' },
   { id: 'support', label: '고객센터' },
   { id: 'coupons', label: '쿠폰' },
+  { id: 'inquiry', label: '문의하기' },
 ])
 
 // 선택된 네비게이션 항목 (순서대로)

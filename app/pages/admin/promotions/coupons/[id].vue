@@ -48,21 +48,6 @@ const isDisabled = computed(() => isFullyDisabled.value)
 // name, description 외 나머지 필드 비활성화 여부
 const isOtherFieldsDisabled = computed(() => isFullyDisabled.value || isStopped.value)
 
-// TODO: API 연동 시 실제 카테고리 목록 조회로 대체
-// const { getCategories } = usePromotion() 또는 별도 API 사용
-const categories = ref([
-  { id: 1, name: '의류' },
-  { id: 2, name: '신발' },
-  { id: 3, name: '가방' },
-  { id: 4, name: '액세서리' },
-  { id: 5, name: '뷰티' },
-  { id: 6, name: '홈/리빙' },
-])
-
-// TODO: API 연동 시 카테고리 목록 조회 함수 구현
-// const fetchCategories = async () => {
-//   categories.value = await getCategories()
-// }
 
 // 폼 데이터
 const form = ref({
@@ -178,7 +163,6 @@ const buildPayload = () => {
     validityType: form.value.validityType,
     allowPromotionOverlap: Boolean(form.value.allowPromotionOverlap),
     allowDuplicateUse: Boolean(form.value.allowDuplicateUse),
-    // TODO: API 스펙에 맞게 필드명 확인 필요
     applicableCategories: form.value.applicableCategories.length > 0 ? form.value.applicableCategories : [],
   }
 

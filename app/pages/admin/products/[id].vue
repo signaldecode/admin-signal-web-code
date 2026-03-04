@@ -433,12 +433,6 @@ const validateForm = () => {
     return false
   }
 
-  const emptySkuVariant = variants.value.find((v) => !v.sku.trim())
-  if (emptySkuVariant) {
-    uiStore.showToast({ type: 'error', message: '모든 옵션 조합에 SKU를 입력해주세요.' })
-    return false
-  }
-
   return true
 }
 
@@ -1261,7 +1255,7 @@ onMounted(() => {
                   >
                 </th>
                 <th class="text-left py-3 px-4 text-xs font-medium text-neutral-500 uppercase">옵션</th>
-                <th class="text-left py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-36">SKU *</th>
+                <th class="text-left py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-36">SKU</th>
                 <th class="text-center py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-24">재고</th>
                 <th class="text-center py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-28">추가금액</th>
               </tr>

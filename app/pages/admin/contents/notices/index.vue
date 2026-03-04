@@ -110,7 +110,6 @@ const handleSelect = (id) => {
 // 벌크 삭제
 const bulkDelete = () => {
   if (!selectedIds.value.length || !confirm(`선택한 ${selectedIds.value.length}개를 삭제하시겠습니까?`)) return
-  // TODO: 벌크 삭제 API 연동
   notices.value = notices.value.filter((n) => !selectedIds.value.includes(n.id))
   selectedIds.value = []
   uiStore.showToast({ type: 'success', message: '삭제되었습니다.' })

@@ -3,7 +3,7 @@
  * 주문 상세 페이지
  * - 주문 회원 정보
  * - 결제 정보
- * - 배송지 정보
+ * - 배송 정보
  * - 주문 상품 정보
  * - 주문 이력
  */
@@ -31,28 +31,12 @@ const order = ref(null)
 // 택배사 목록 (스토어에서 가져옴)
 const carriers = computed(() => catalogStore.carriers)
 
-// 주문 상태 매핑
+// 주문 상태 매핑 (웹 에이전시 간소화)
 const statusMap = {
-  PENDING: { label: '입금대기', variant: 'neutral' },
   PAID: { label: '결제완료', variant: 'primary' },
-  PREPARING: { label: '상품준비중', variant: 'warning' },
-  SHIPPING: { label: '배송중', variant: 'info' },
-  DELIVERED: { label: '배송완료', variant: 'success' },
-  CONFIRMED: { label: '구매확정', variant: 'success' },
+  DELIVERED: { label: '발송완료', variant: 'success' },
   CANCELLED: { label: '주문취소', variant: 'neutral' },
   REFUNDED: { label: '환불완료', variant: 'neutral' },
-  // 반품
-  RETURN_REQUESTED: { label: '반품요청', variant: 'warning' },
-  RETURN_IN_PROGRESS: { label: '반품진행중', variant: 'warning' },
-  RETURN_COMPLETED: { label: '반품완료', variant: 'neutral' },
-  PARTIAL_RETURN_IN_PROGRESS: { label: '부분반품진행중', variant: 'warning' },
-  PARTIAL_RETURN_COMPLETED: { label: '부분반품완료', variant: 'neutral' },
-  // 교환
-  EXCHANGE_REQUESTED: { label: '교환요청', variant: 'warning' },
-  EXCHANGE_IN_PROGRESS: { label: '교환진행중', variant: 'warning' },
-  EXCHANGE_COMPLETED: { label: '교환완료', variant: 'neutral' },
-  PARTIAL_EXCHANGE_IN_PROGRESS: { label: '부분교환진행중', variant: 'warning' },
-  PARTIAL_EXCHANGE_COMPLETED: { label: '부분교환완료', variant: 'neutral' },
 }
 
 // 결제 수단 매핑
@@ -76,45 +60,25 @@ const paymentStatusMap = {
   PARTIAL_REFUNDED: { label: '부분환불완료', variant: 'warning' },
 }
 
-// 주문 상태 옵션 (직접 변경 가능한 상태만)
+// 주문 상태 옵션 (웹 에이전시 간소화)
 const allStatusOptions = [
-  { value: 'PENDING', label: '입금대기' },
   { value: 'PAID', label: '결제완료' },
-  { value: 'PREPARING', label: '상품준비중' },
-  { value: 'SHIPPING', label: '배송중' },
-  { value: 'DELIVERED', label: '배송완료' },
+  { value: 'DELIVERED', label: '발송완료' },
   { value: 'CANCELLED', label: '주문취소' },
+  { value: 'REFUNDED', label: '환불완료' },
 ]
 
-// 상태별 허용 전이 규칙
-// - 배송 전 (PENDING, PAID, PREPARING): 직접 상태 변경 + 취소 가능
-// - 배송중 전환: "발송 등록" 모달을 통해서만 가능 (shipments API)
-// - 배송 중 (SHIPPING): 배송완료로만 변경 가능
-// - 배송 후 (DELIVERED, CONFIRMED): 직접 변경 불가 → 클레임 생성 필요
-// - 주문 취소: PAID 상태에서만 가능 (PREPARING부터는 반품으로 처리)
+// 상태별 허용 전이 규칙 (웹 에이전시 간소화)
 const allowedTransitions = {
-  PENDING: ['PAID', 'CANCELLED'],           // 입금대기 → 결제완료, 취소
-  PAID: ['PREPARING', 'CANCELLED'],         // 결제완료 → 상품준비중, 취소
-  PREPARING: [],                            // 상품준비중 → 배송중은 발송 등록으로, 취소는 반품으로
-  SHIPPING: ['DELIVERED'],                  // 배송중 → 배송완료만 가능
-  DELIVERED: [],                            // 배송완료 → 클레임으로만 처리
-  CONFIRMED: [],                            // 구매확정 → 클레임으로만 처리
-  CANCELLED: [],                            // 취소 → 변경 불가
-  REFUNDED: [],                             // 환불 → 변경 불가
+  PAID: ['DELIVERED', 'CANCELLED', 'REFUNDED'],  // 결제완료 → 발송완료, 취소, 환불
+  DELIVERED: ['REFUNDED'],                        // 발송완료 → 환불만 가능
+  CANCELLED: [],                                  // 취소 → 변경 불가
+  REFUNDED: [],                                   // 환불 → 변경 불가
 }
 
-// 클레임 생성 가능한 주문 상태인지
+// 클레임 생성 가능한 주문 상태인지 (웹 에이전시에서는 미사용)
 const isClaimableOrderStatus = computed(() => {
-  const status = order.value?.status
-  return [
-    'DELIVERED',
-    'CONFIRMED',
-    'REFUNDED',
-    'PARTIAL_RETURN_IN_PROGRESS',
-    'PARTIAL_RETURN_COMPLETED',
-    'PARTIAL_EXCHANGE_IN_PROGRESS',
-    'PARTIAL_EXCHANGE_COMPLETED',
-  ].includes(status)
+  return false
 })
 
 // 클레임 생성 불가능한 상품 상태
@@ -272,7 +236,9 @@ const shippingInfoItems = computed(() => {
   return items
 })
 
-// 배송지 정보 (주문의 shipping 정보)
+// 배송 정보 (주문의 shipping 정보)
+const shippingEmail = computed(() => order.value?.shipping?.email || '')
+
 const shippingAddressItems = computed(() => {
   const s = order.value?.shipping
   if (!s) return []
@@ -280,8 +246,8 @@ const shippingAddressItems = computed(() => {
   const items = [
     { key: 'recipientName', label: '수령인', value: s.recipientName },
     { key: 'recipientPhone', label: '연락처', value: s.recipientPhone },
-    { key: 'postalCode', label: '우편번호', value: s.postalCode },
-    { key: 'address', label: '주소', value: s.address },
+    // { key: 'postalCode', label: '우편번호', value: s.postalCode },
+    // { key: 'address', label: '주소', value: s.address },
   ]
 
   if (s.deliveryMessage) {
@@ -342,10 +308,9 @@ const getOrderItemById = (orderItemId) => {
   return order.value?.items?.find((item) => item.orderItemId === orderItemId)
 }
 
-// 발송 가능한 상태인지 확인 (상품준비중, 배송중일 때만 - 백엔드 스펙)
+// 발송 가능한 상태인지 확인 (웹 에이전시에서는 상태 변경으로 처리)
 const canCreateShipment = computed(() => {
-  const status = order.value?.status
-  return ['PREPARING', 'SHIPPING'].includes(status) && hasUnshippedItems.value
+  return false
 })
 
 // 발송 모달 열기
@@ -723,9 +688,6 @@ const canOpenStatusModal = computed(() => {
 // 상태 변경 불가 사유 메시지
 const getStatusChangeBlockedMessage = () => {
   const currentStatus = order.value?.status
-  if (currentStatus === 'DELIVERED' || currentStatus === 'CONFIRMED') {
-    return '배송완료 후에는 직접 상태 변경이 불가합니다.\n반품/교환/환불은 클레임을 생성해주세요.'
-  }
   if (currentStatus === 'CANCELLED') {
     return '취소된 주문은 상태를 변경할 수 없습니다.'
   }
@@ -755,8 +717,8 @@ const openStatusModal = () => {
 
 // 되돌릴 수 없는 상태 변경인지 확인
 const isIrreversibleChange = computed(() => {
-  // 상품준비중, 배송완료, 취소로 변경하는 경우 되돌릴 수 없음
-  return ['PREPARING', 'DELIVERED', 'CANCELLED'].includes(selectedStatus.value)
+  // 발송완료, 취소, 환불로 변경하는 경우 되돌릴 수 없음
+  return ['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(selectedStatus.value)
 })
 
 // 변경 버튼 클릭 시
@@ -1497,11 +1459,11 @@ onMounted(async () => {
           </UiDescriptionList>
         </UiCard>
 
-        <!-- 배송지 정보 -->
+        <!-- 배송 정보 -->
         <UiCard>
           <template #header>
             <div class="flex items-center justify-between">
-              <h3 class="font-semibold text-neutral-900">배송지 정보</h3>
+              <h3 class="font-semibold text-neutral-900">배송 정보</h3>
               <div class="flex items-center gap-2">
                 <UiButton
                   v-if="canCreateShipment"
@@ -1530,6 +1492,15 @@ onMounted(async () => {
               </div>
             </div>
           </template>
+
+          <!-- 받을 이메일 주소 (강조 표시) -->
+          <div class="mb-4 p-4 bg-primary-50 border border-primary-200 rounded-lg">
+            <p class="text-sm text-primary-600 mb-1">받을 이메일 주소</p>
+            <p class="text-lg font-semibold text-primary-900">
+              {{ shippingEmail || '-' }}
+            </p>
+          </div>
+
           <UiDescriptionList :items="shippingAddressItems" />
         </UiCard>
       </div>
@@ -1950,14 +1921,6 @@ onMounted(async () => {
         <p class="text-sm text-neutral-600 mb-4">
           주문 <span class="font-medium text-neutral-900">{{ order?.orderNumber }}</span>의 상태를 변경합니다.
         </p>
-
-        <!-- 상품준비중일 때 발송 등록 안내 -->
-        <div v-if="order?.status === 'PREPARING'" class="mb-4 p-3 bg-info-50 border border-info-200 rounded-lg">
-          <p class="text-sm text-info-700">
-            <span class="font-medium">배송중</span> 전환은
-            <span class="font-medium">발송 등록</span> 버튼을 이용해주세요.
-          </p>
-        </div>
 
         <div class="space-y-2">
           <label

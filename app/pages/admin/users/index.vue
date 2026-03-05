@@ -63,7 +63,7 @@ const selectedGrade = ref('')
 
 // 등급 옵션 (catalog store에서 조회)
 const gradeOptions = computed(() =>
-  catalogStore.grades.map((g) => ({
+  (catalogStore.grades || []).map((g) => ({
     value: g.grade_id,
     label: g.name,
   }))
@@ -191,20 +191,20 @@ const openGradeModal = () => {
 const handleGradeChange = async () => {
   if (!selectedGrade.value) return
 
-  const count = selectedIds.value.length
-
   try {
-    await patch('/admin/users/grades', {
+    const response = await patch('/admin/users/grades', {
       userIds: selectedIds.value,
       gradeId: selectedGrade.value,
     })
+
+    const changedCount = response.data?.changedCount || selectedIds.value.length
 
     showGradeModal.value = false
     selectedIds.value = []
 
     uiStore.showToast({
       type: 'success',
-      message: `${count}명의 회원 등급이 변경되었습니다.`,
+      message: `${changedCount}명의 회원 등급이 변경되었습니다.`,
     })
 
     // 목록 새로고침
@@ -212,7 +212,7 @@ const handleGradeChange = async () => {
   } catch (err) {
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || '등급 변경에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || '등급 변경에 실패했습니다.',
     })
   }
 }
@@ -222,11 +222,21 @@ const goToDetail = (userId) => {
   router.push(`/admin/users/${userId}`)
 }
 
+// 등급 페이지에서 전달된 필터 (URL 파라미터 없이)
+const pendingGradeFilter = useState('pendingGradeFilter', () => '')
+
 // 초기 로드
 onMounted(() => {
   if (route.query.type) searchType.value = route.query.type
   if (route.query.keyword) searchKeyword.value = route.query.keyword
   if (route.query.page) currentPage.value = parseInt(route.query.page) || 1
+
+  // 등급 페이지에서 전달된 필터 적용
+  if (pendingGradeFilter.value) {
+    filterGrade.value = pendingGradeFilter.value
+    pendingGradeFilter.value = '' // 사용 후 초기화
+  }
+
   fetchUsers()
 })
 </script>

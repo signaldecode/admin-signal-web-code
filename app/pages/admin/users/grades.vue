@@ -12,12 +12,34 @@ const { $api } = useNuxtApp()
 const uiStore = useUiStore()
 const router = useRouter()
 
+// 현재 날짜 기준 이번달 계산
+const getCurrentMonth = () => {
+  const now = new Date()
+  return `${now.getFullYear()}년 ${now.getMonth() + 1}월`
+}
+
 // 현재 날짜 기준 다음달 계산
 const getNextMonth = () => {
   const now = new Date()
   const year = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear()
   const month = now.getMonth() === 11 ? 1 : now.getMonth() + 2
   return `${year}년 ${month}월`
+}
+
+// 다음 달 등급 데이터 (pendingSnapshot이 있으면 그걸 사용, 없으면 현재와 동일)
+const getNextMonthGradeData = (grade) => {
+  if (grade.hasPendingChanges && grade.pendingSnapshot) {
+    return {
+      name: grade.pendingSnapshot.name || grade.name,
+      minAmount: grade.pendingSnapshot.min_amount ?? grade.minAmount,
+      couponIds: grade.pendingSnapshot.coupon_ids || grade.couponIds,
+    }
+  }
+  return {
+    name: grade.name,
+    minAmount: grade.minAmount,
+    couponIds: grade.couponIds,
+  }
 }
 
 // 등급 레벨 → 색상 매핑 (높은 레벨 = 상위 등급)
@@ -93,13 +115,14 @@ const editForm = ref({
   couponIds: [],
 })
 
-// 등급 편집 열기
+// 등급 편집 열기 (다음 달 데이터 기준으로 초기화)
 const openEditModal = (grade) => {
   editingGrade.value = grade
+  const nextMonthData = getNextMonthGradeData(grade)
   editForm.value = {
-    name: grade.name,
-    minAmount: grade.minAmount,
-    couponIds: [...grade.couponIds],
+    name: nextMonthData.name,
+    minAmount: nextMonthData.minAmount,
+    couponIds: [...nextMonthData.couponIds],
   }
   showEditModal.value = true
 }
@@ -150,18 +173,60 @@ const saveGrade = async () => {
   }
 }
 
-// 등급별 회원 보기
+// 등급별 회원 보기 (URL 파라미터 없이 상태로 전달)
+const pendingGradeFilter = useState('pendingGradeFilter', () => '')
 const viewMembers = (gradeName) => {
-  router.push(`/admin/users?grade=${gradeName}`)
+  pendingGradeFilter.value = gradeName
+  router.push('/admin/users')
 }
 
-onMounted(() => {
-  fetchGrades()
+// ── 등급 정책 변경 이력 ──
+const isLoadingHistories = ref(false)
+const policyHistories = ref([])
+
+const fetchPolicyHistories = async () => {
+  isLoadingHistories.value = true
+  try {
+    const response = await $api.get('/admin/users/grades/policy-histories')
+    policyHistories.value = response.data || []
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '변경 이력을 불러오는데 실패했습니다.',
+    })
+    policyHistories.value = []
+  } finally {
+    isLoadingHistories.value = false
+  }
+}
+
+// 등급 ID → 이름 조회
+const getGradeName = (gradeId) => {
+  const grade = grades.value.find((g) => g.id === gradeId)
+  return grade?.name || `등급 #${gradeId}`
+}
+
+// 날짜 포맷
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  return date.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+onMounted(async () => {
+  await fetchGrades()
+  fetchPolicyHistories()
 })
 </script>
 
 <template>
-  <div>
+  <div class="h-full overflow-y-auto">
     <!-- Page Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
       <div>
@@ -172,119 +237,275 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 다음 달 적용 안내 -->
-    <div class="mb-4 p-3 bg-warning-50 border border-warning-200 rounded-lg">
-      <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-warning-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        <p class="text-sm text-warning-700">
-          아래 설정은 <strong>{{ getNextMonth() }}</strong>부터 적용됩니다.
-        </p>
-      </div>
-    </div>
-
     <!-- Loading -->
     <div v-if="isLoading" class="flex items-center justify-center py-20">
       <UiSpinner size="lg" />
     </div>
 
-    <!-- Grade Cards -->
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <UiCard
-        v-for="grade in grades"
-        :key="grade.id"
-        padding="none"
-      >
-        <!-- Header -->
-        <div
-          :class="[
-            'p-4 border-b',
-            grade.color === 'error' ? 'bg-error-50 border-error-100' : '',
-            grade.color === 'warning' ? 'bg-warning-50 border-warning-100' : '',
-            grade.color === 'neutral' ? 'bg-neutral-50 border-neutral-100' : '',
-          ]"
-        >
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <UiBadge :variant="grade.color" size="sm">
-                {{ grade.name }}
-              </UiBadge>
-              <span class="text-sm text-neutral-500">{{ grade.memberCount }}명</span>
-              <UiBadge v-if="grade.isDefault" variant="neutral" size="sm">기본</UiBadge>
-              <UiBadge v-if="grade.hasPendingChanges" variant="warning" size="sm">변경 대기</UiBadge>
-            </div>
-            <button
-              type="button"
-              class="p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-white/50"
-              @click="openEditModal(grade)"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </button>
-          </div>
+    <div v-else>
+      <!-- ========== 이번 달 혜택 ========== -->
+      <div class="mb-8">
+        <div class="flex items-center gap-2 mb-4">
+          <h2 class="text-lg font-semibold text-neutral-900">{{ getCurrentMonth() }} 혜택</h2>
+          <UiBadge variant="success" size="sm">현재 적용 중</UiBadge>
         </div>
 
-        <!-- Content -->
-        <div class="p-4 space-y-4">
-          <!-- 승급 조건 -->
-          <div>
-            <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">승급 조건</h4>
-            <p class="text-sm text-neutral-900">
-              <span v-if="grade.minAmount > 0">
-                누적 구매금액 <span class="font-semibold">{{ formatCurrency(grade.minAmount) }}</span> 이상
-              </span>
-              <span v-else class="text-neutral-500">기본 등급</span>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <UiCard
+            v-for="grade in grades"
+            :key="`current-${grade.id}`"
+            padding="none"
+          >
+            <!-- Header -->
+            <div
+              :class="[
+                'p-4 border-b',
+                grade.color === 'error' ? 'bg-error-50 border-error-100' : '',
+                grade.color === 'warning' ? 'bg-warning-50 border-warning-100' : '',
+                grade.color === 'neutral' ? 'bg-neutral-50 border-neutral-100' : '',
+              ]"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UiBadge :variant="grade.color" size="sm">
+                    {{ grade.name }}
+                  </UiBadge>
+                  <span class="text-sm text-neutral-500">{{ grade.memberCount }}명</span>
+                  <UiBadge v-if="grade.isDefault" variant="neutral" size="sm">기본</UiBadge>
+                </div>
+                <button
+                  type="button"
+                  class="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  @click="viewMembers(grade.name)"
+                >
+                  회원 보기 →
+                </button>
+              </div>
+            </div>
+
+            <!-- Content -->
+            <div class="p-4 space-y-4">
+              <!-- 승급 조건 -->
+              <div>
+                <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">승급 조건</h4>
+                <p class="text-sm text-neutral-900">
+                  <span v-if="grade.minAmount > 0">
+                    누적 구매금액 <span class="font-semibold">{{ formatCurrency(grade.minAmount) }}</span> 이상
+                  </span>
+                  <span v-else class="text-neutral-500">기본 등급</span>
+                </p>
+              </div>
+
+              <!-- 적용 쿠폰 -->
+              <div>
+                <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">적용 쿠폰</h4>
+                <div v-if="grade.couponIds.length > 0">
+                  <ul class="text-sm text-neutral-600 space-y-1">
+                    <li
+                      v-for="couponId in grade.couponIds"
+                      :key="couponId"
+                      class="flex items-center gap-1"
+                    >
+                      <svg class="w-3 h-3 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      {{ getCouponName(couponId) }}
+                    </li>
+                  </ul>
+                </div>
+                <p v-else class="text-sm text-neutral-400">적용된 쿠폰 없음</p>
+              </div>
+            </div>
+          </UiCard>
+        </div>
+      </div>
+
+      <!-- ========== 다음 달 혜택 ========== -->
+      <div class="mb-8">
+        <div class="flex items-center gap-2 mb-4">
+          <h2 class="text-lg font-semibold text-neutral-900">{{ getNextMonth() }} 혜택</h2>
+          <UiBadge variant="warning" size="sm">예정</UiBadge>
+        </div>
+
+        <!-- 안내 -->
+        <div class="mb-4 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-warning-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p class="text-sm text-warning-700">
+              아래 설정은 <strong>{{ getNextMonth() }}</strong>부터 적용됩니다. 수정하려면 카드의 수정 버튼을 클릭하세요.
             </p>
           </div>
+        </div>
 
-          <!-- 적용 쿠폰 -->
-          <div>
-            <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">적용 쿠폰</h4>
-            <div v-if="grade.couponIds.length > 0">
-              <ul class="text-sm text-neutral-600 space-y-1">
-                <li
-                  v-for="couponId in grade.couponIds"
-                  :key="couponId"
-                  class="flex items-center gap-1"
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <UiCard
+            v-for="grade in grades"
+            :key="`next-${grade.id}`"
+            padding="none"
+          >
+            <!-- Header -->
+            <div
+              :class="[
+                'p-4 border-b',
+                grade.color === 'error' ? 'bg-error-50 border-error-100' : '',
+                grade.color === 'warning' ? 'bg-warning-50 border-warning-100' : '',
+                grade.color === 'neutral' ? 'bg-neutral-50 border-neutral-100' : '',
+              ]"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UiBadge :variant="grade.color" size="sm">
+                    {{ getNextMonthGradeData(grade).name }}
+                  </UiBadge>
+                  <UiBadge v-if="grade.isDefault" variant="neutral" size="sm">기본</UiBadge>
+                  <UiBadge v-if="grade.hasPendingChanges" variant="warning" size="sm">변경됨</UiBadge>
+                </div>
+                <button
+                  type="button"
+                  class="p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-white/50"
+                  @click="openEditModal(grade)"
                 >
-                  <svg class="w-3 h-3 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                   </svg>
-                  {{ getCouponName(couponId) }}
-                </li>
-              </ul>
+                </button>
+              </div>
             </div>
-            <p v-else class="text-sm text-neutral-400">적용된 쿠폰 없음</p>
+
+            <!-- Content -->
+            <div class="p-4 space-y-4">
+              <!-- 승급 조건 -->
+              <div>
+                <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">승급 조건</h4>
+                <p class="text-sm text-neutral-900">
+                  <span v-if="getNextMonthGradeData(grade).minAmount > 0">
+                    누적 구매금액 <span class="font-semibold">{{ formatCurrency(getNextMonthGradeData(grade).minAmount) }}</span> 이상
+                  </span>
+                  <span v-else class="text-neutral-500">기본 등급</span>
+                </p>
+              </div>
+
+              <!-- 적용 쿠폰 -->
+              <div>
+                <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">적용 쿠폰</h4>
+                <div v-if="getNextMonthGradeData(grade).couponIds.length > 0">
+                  <ul class="text-sm text-neutral-600 space-y-1">
+                    <li
+                      v-for="couponId in getNextMonthGradeData(grade).couponIds"
+                      :key="couponId"
+                      class="flex items-center gap-1"
+                    >
+                      <svg class="w-3 h-3 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      {{ getCouponName(couponId) }}
+                    </li>
+                  </ul>
+                </div>
+                <p v-else class="text-sm text-neutral-400">적용된 쿠폰 없음</p>
+              </div>
+            </div>
+          </UiCard>
+        </div>
+      </div>
+
+      <!-- Info -->
+      <div class="mb-8 p-4 bg-info-50 border border-info-200 rounded-lg">
+        <div class="flex gap-3">
+          <svg class="w-5 h-5 text-info-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <p class="text-sm font-medium text-info-700">등급 변경 안내</p>
+            <p class="text-sm text-info-600 mt-1">
+              회원 등급은 <strong>회원 목록</strong>에서 회원을 선택하여 일괄 변경할 수 있습니다.
+              등급 자동 승급/강등은 매월 1일에 누적 구매금액을 기준으로 적용됩니다.
+            </p>
           </div>
         </div>
-
-        <!-- Footer -->
-        <div class="px-4 py-3 border-t border-neutral-100 bg-neutral-50">
-          <button
-            type="button"
-            class="text-sm text-primary-600 hover:text-primary-700 font-medium"
-            @click="viewMembers(grade.name)"
-          >
-            회원 보기 →
-          </button>
-        </div>
-      </UiCard>
+      </div>
     </div>
 
-    <!-- Info -->
-    <div class="mt-6 p-4 bg-info-50 border border-info-200 rounded-lg">
-      <div class="flex gap-3">
-        <svg class="w-5 h-5 text-info-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <!-- 등급 정책 변경 이력 -->
+    <div class="mt-8">
+      <h2 class="text-lg font-semibold text-neutral-900 mb-4">등급 정책 변경 이력</h2>
+
+      <!-- Loading -->
+      <div v-if="isLoadingHistories" class="flex items-center justify-center py-12">
+        <UiSpinner size="md" />
+      </div>
+
+      <!-- Empty -->
+      <div v-else-if="policyHistories.length === 0" class="text-center py-12 bg-white rounded-lg border border-neutral-200">
+        <svg class="mx-auto w-12 h-12 text-neutral-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
-        <div>
-          <p class="text-sm font-medium text-info-700">등급 변경 안내</p>
-          <p class="text-sm text-info-600 mt-1">
-            회원 등급은 <strong>회원 목록</strong>에서 회원을 선택하여 일괄 변경할 수 있습니다.
-            등급 자동 승급/강등은 매월 1일에 누적 구매금액을 기준으로 적용됩니다.
-          </p>
+        <p class="text-neutral-500">변경 이력이 없습니다.</p>
+      </div>
+
+      <!-- History List -->
+      <div v-else class="space-y-6">
+        <div
+          v-for="group in policyHistories"
+          :key="group.year_month"
+          class="bg-white rounded-lg border border-neutral-200 overflow-hidden"
+        >
+          <!-- 월별 헤더 -->
+          <div class="px-4 py-3 bg-neutral-50 border-b border-neutral-200">
+            <h3 class="font-semibold text-neutral-900">{{ group.year_month }}</h3>
+          </div>
+
+          <!-- 이력 목록 -->
+          <div class="divide-y divide-neutral-100">
+            <div
+              v-for="history in group.histories"
+              :key="history.id"
+              class="p-4 hover:bg-neutral-50 transition-colors"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <!-- 등급명 -->
+                  <div class="flex items-center gap-2 mb-2">
+                    <UiBadge variant="primary" size="sm">
+                      {{ history.policy?.name || getGradeName(history.grade_id) }}
+                    </UiBadge>
+                    <span class="text-xs text-neutral-400">ID: {{ history.grade_id }}</span>
+                  </div>
+
+                  <!-- 정책 내용 -->
+                  <div class="space-y-2 text-sm">
+                    <div>
+                      <span class="text-neutral-500">승급 조건:</span>
+                      <span class="ml-1 text-neutral-900">
+                        {{ history.policy?.min_amount > 0 ? formatCurrency(history.policy.min_amount) + ' 이상' : '기본 등급' }}
+                      </span>
+                    </div>
+                    <div>
+                      <span class="text-neutral-500">적용 쿠폰:</span>
+                      <div v-if="history.policy?.coupon_ids?.length > 0" class="inline-flex flex-wrap gap-1 ml-1">
+                        <span
+                          v-for="couponId in history.policy.coupon_ids"
+                          :key="couponId"
+                          class="inline-block px-2 py-0.5 bg-primary-100 text-primary-700 text-xs rounded-full"
+                        >
+                          {{ getCouponName(couponId) }}
+                        </span>
+                      </div>
+                      <span v-else class="ml-1 text-neutral-400">없음</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 변경 정보 -->
+                <div class="text-right text-sm flex-shrink-0">
+                  <p class="text-neutral-500">{{ formatDateTime(history.created_at) }}</p>
+                  <p class="text-xs text-neutral-400 mt-1">변경자 ID: {{ history.changed_by }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -33,7 +33,8 @@ export const useCatalogStore = defineStore('catalog', () => {
       categories.value = categoriesRes.data || categoriesRes
       tags.value = tagsRes.data || tagsRes
       carriers.value = carriersRes.data || carriersRes
-      grades.value = gradesRes.data || gradesRes
+      const gradesData = gradesRes.data || gradesRes
+      grades.value = gradesData.grades || gradesData || []
       isLoaded.value = true
     } catch (error) {
       // 데이터 로드 실패
@@ -71,8 +72,9 @@ export const useCatalogStore = defineStore('catalog', () => {
    */
   const refreshGrades = async ($api) => {
     try {
-      const response = await $api.get('/admin/users/grades')
-      grades.value = response.data || response
+      const response = await $api.get('/admin/users/grades')      // grades API는 { grades: [...], coupons: [...] } 형태로 반환
+      const gradesData = response.data || response
+      grades.value = gradesData.grades || gradesData || []
     } catch (error) {
       throw error
     }

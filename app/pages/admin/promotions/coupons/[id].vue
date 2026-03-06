@@ -6,12 +6,22 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useCatalogStore } from '~/stores/catalog'
 import { useCoupon } from '~/composables/useCoupon'
 import { validateDiscountValue, clampDiscountValue, clampAmountValue } from '~/utils/discountValidation'
 
 const route = useRoute()
 const router = useRouter()
 const uiStore = useUiStore()
+const catalogStore = useCatalogStore()
+
+// 대분류 카테고리만 가져오기
+const categories = computed(() => {
+  return catalogStore.categories.map((cat) => ({
+    id: cat.id,
+    name: cat.name,
+  }))
+})
 const {
   couponTypeOptions,
   issuanceStatusOptions,
@@ -41,9 +51,6 @@ const isFieldDisabled = (fieldName) => {
   if (!isEditMode.value) return false
   return !isFieldEditable(fieldName, form.value.status)
 }
-
-// 저장 버튼 숨김 여부 (발급중, 종료 상태에서는 숨김)
-const isDisabled = computed(() => isFullyDisabled.value)
 
 // name, description 외 나머지 필드 비활성화 여부
 const isOtherFieldsDisabled = computed(() => isFullyDisabled.value || isStopped.value)
@@ -121,7 +128,7 @@ const fetchCoupon = async () => {
       validFrom: data.validFrom ? data.validFrom.slice(0, 16) : '',
       validTo: data.validTo ? data.validTo.slice(0, 16) : '',
       notice: data.notice || getDefaultNotes(data.couponType || 'PRODUCT_DISCOUNT').join('\n'),
-      applicableCategories: data.applicableCategories || [], // TODO: API 응답에 포함되어야 함
+      applicableCategories: data.categoryIds || [],
     }
   } catch (error) {
     uiStore.showToast({ type: 'error', message: error.message || '쿠폰을 찾을 수 없습니다.' })
@@ -163,7 +170,7 @@ const buildPayload = () => {
     validityType: form.value.validityType,
     allowPromotionOverlap: Boolean(form.value.allowPromotionOverlap),
     allowDuplicateUse: Boolean(form.value.allowDuplicateUse),
-    applicableCategories: form.value.applicableCategories.length > 0 ? form.value.applicableCategories : [],
+    categoryIds: form.value.applicableCategories.length > 0 ? form.value.applicableCategories : [],
   }
 
   // validityType에 따라 관련 필드만 포함

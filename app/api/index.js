@@ -10,7 +10,7 @@
 export const authApi = {
   login: '/auth/login',
   logout: '/auth/logout',
-  me: '/me',
+  me: '/admin/me',
 }
 
 /**

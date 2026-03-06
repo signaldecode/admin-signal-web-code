@@ -147,28 +147,14 @@ const saveAllChanges = async () => {
       deletedIds: deletedIds.value,
     }
 
-    // 디버깅: 이미지 파일 및 payload 확인
-    console.log('=== 카테고리 sync 디버깅 ===')
-    console.log('이미지 파일 수:', imageFiles.length)
-    console.log('이미지 파일들:', imageFiles)
-    console.log('payload:', JSON.stringify(payload, null, 2))
-    console.log('categories 원본:', categories.value)
-
     // FormData 생성
     const formData = new FormData()
     formData.append('data', JSON.stringify(payload))
 
     // 이미지 파일들 추가 (백엔드 필드명: categoryImages)
-    imageFiles.forEach((file, index) => {
-      console.log(`이미지 ${index}:`, file.name, file.size, file.type)
+    imageFiles.forEach((file) => {
       formData.append('categoryImages', file)
     })
-
-    // FormData 내용 확인
-    console.log('FormData entries:')
-    for (const [key, value] of formData.entries()) {
-      console.log(`  ${key}:`, value instanceof File ? `File(${value.name}, ${value.size}bytes)` : value)
-    }
 
     const response = await $api.putFormData('/admin/categories/sync', formData)
     const responseData = response?.data || response
@@ -180,12 +166,6 @@ const saveAllChanges = async () => {
     if (failedIds.length > 0) {
       // 삭제 실패한 ID는 deletedIds에서 제거 (다음 저장 시 다시 시도하지 않도록)
       deletedIds.value = deletedIds.value.filter((id) => !failedIds.includes(id))
-
-      // 실패 사유별 메시지 생성
-      const reasonMessages = {
-        CATEGORY_HAS_PRODUCTS: '상품이 존재',
-        CATEGORY_HAS_CHILDREN: '하위 카테고리가 존재',
-      }
 
       // 사유별로 그룹핑
       const hasProducts = failedIds.filter((id) => failedReasons[id] === 'CATEGORY_HAS_PRODUCTS')
@@ -405,16 +385,10 @@ const handleImageSelect = (event) => {
 
 // 이미지 삭제
 const removeImage = (category) => {
-  console.log('=== 이미지 삭제 ===')
-  console.log('삭제 전 category:', JSON.parse(JSON.stringify(category)))
-
   if (category.image?.preview && category.image?.isNew) {
     URL.revokeObjectURL(category.image.preview)
   }
   category.image = null
-
-  console.log('삭제 후 category:', JSON.parse(JSON.stringify(category)))
-  console.log('삭제 후 category.image:', category.image)
 }
 
 // 이미지 URL 가져오기 (미리보기 또는 서버 URL)

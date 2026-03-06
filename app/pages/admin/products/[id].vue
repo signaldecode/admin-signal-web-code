@@ -40,26 +40,65 @@ const product = ref({
   costPrice: 0,
   description: '',
   detailContent: '', // 상세 페이지 HTML 콘텐츠
-  categoryId: '', // 카테고리 ID
+  categoryIds: [], // 카테고리 ID 배열 (다중 선택)
   price: 0,
   hasDiscount: false,
   discountType: 'RATE', // 'RATE' = 퍼센트, 'AMOUNT' = 금액
   discountValue: 0,
   maxPurchase: 10,
   status: 'ON_SALE',
-  guide: '', // 이용안내
-  policy: '', // 환불규정
+  guide: `• 디자인은 디지털 콘텐츠로 분류되어 디자인 복사 또는 원본 다운로드 또는 전달 완료 이후에는 청약 철회(환불)가 불가능합니다.
+• 템플릿은 자유롭게 수정하여 사용이 가능합니다. 단, 템플릿 자체를 별도로 재판매하거나 마켓 등에 등록하는 행위는 금지됩니다.
+• 템플릿에 사용된 이미지는 홈페이지 외 다른 용도로의 사용이 금지되어 있으며, 무단 사용 및 배포 시 법적 책임을 물을 수 있습니다.
+• 템플릿의 디자인 원저작권은 ㈜시그널디코드에 있으며, 수정 및 재가공을 통해 2차 저작물 형태로 사용 가능합니다.`, // 이용안내 (기본 템플릿)
+  policy: `• 템플릿 PSD, HTML 파일 콘텐츠의 특성상 파일을 이메일로 전송 후 환불이 불가합니다.
+• 이메일로 전송되지 않은 상태라면 주문 취소가 가능합니다.
+• 주문 취소 확인 방법 : 마이페이지 - 주문 내역 - 주문 상세 - 주문 정보 섹션 하단 우측 [주문 취소] 버튼이 활성화 상태 일 때만 가능합니다.`, // 환불규정 (기본 템플릿)
   sampleUrl: '', // 샘플 URL
 })
 
 // 선택된 태그 ID 목록
 const selectedTagIds = ref([])
 
-// 카테고리 목록 (Pinia 스토어에서 가져옴)
+// 카테고리 목록 (Pinia 스토어에서 가져옴) - 대분류 > 소분류 구조
 const categories = computed(() => catalogStore.categories)
 
-// 카테고리 옵션 (플랫하게 변환)
-const categoryOptions = computed(() => catalogStore.getCategoryOptions())
+// 선택된 대분류 카테고리 (소분류 표시용)
+const selectedParentCategoryId = ref(null)
+
+// 선택된 대분류의 소분류 목록
+const childCategories = computed(() => {
+  if (!selectedParentCategoryId.value) return []
+  const parent = categories.value.find((c) => c.id === selectedParentCategoryId.value)
+  return parent?.children || []
+})
+
+// 대분류 선택
+const selectParentCategory = (parentId) => {
+  selectedParentCategoryId.value = parentId
+}
+
+// 소분류 카테고리 토글
+const toggleCategory = (categoryId) => {
+  const idx = product.value.categoryIds.indexOf(categoryId)
+  if (idx > -1) {
+    product.value.categoryIds.splice(idx, 1)
+  } else {
+    product.value.categoryIds.push(categoryId)
+  }
+}
+
+// 카테고리 선택 여부
+const isCategorySelected = (categoryId) => {
+  return product.value.categoryIds.includes(categoryId)
+}
+
+// 대분류에 선택된 소분류 개수
+const getSelectedCountInParent = (parentId) => {
+  const parent = categories.value.find((c) => c.id === parentId)
+  if (!parent?.children) return 0
+  return parent.children.filter((child) => product.value.categoryIds.includes(child.id)).length
+}
 
 // 태그 목록 (Pinia 스토어에서 가져옴)
 const tags = computed(() => catalogStore.tags)
@@ -417,7 +456,7 @@ const validateForm = () => {
     return false
   }
 
-  if (!product.value.categoryId) {
+  if (product.value.categoryIds.length === 0) {
     uiStore.showToast({ type: 'error', message: '카테고리를 선택해주세요.' })
     return false
   }
@@ -478,7 +517,7 @@ const buildRequestData = () => {
     maxPurchaseQuantity: product.value.maxPurchaseQuantity,
     discountType: product.value.hasDiscount ? product.value.discountType : null,
     discountValue: product.value.hasDiscount ? product.value.discountValue : 0,
-    categoryId: product.value.categoryId || null,
+    categoryIds: product.value.categoryIds.length > 0 ? product.value.categoryIds : [],
     tagIds: selectedTagIds.value,
     guide: product.value.guide || null,
     policy: product.value.policy || null,
@@ -526,9 +565,13 @@ const buildPatchData = () => {
   if (currentDiscountType !== orig.discountType) changes.discountType = currentDiscountType
   if (currentDiscountValue !== orig.discountValue) changes.discountValue = currentDiscountValue
 
-  // 카테고리
-  const currentCategoryId = product.value.categoryId || null
-  if (currentCategoryId !== orig.category?.id) changes.categoryId = currentCategoryId
+  // 카테고리 (배열 비교)
+  const categoryIdsSorted = [...product.value.categoryIds].sort()
+  const origCategoryIds = orig.categoryIds || (orig.category?.id ? [orig.category.id] : [])
+  const origCategoryIdsSorted = [...origCategoryIds].sort()
+  if (JSON.stringify(categoryIdsSorted) !== JSON.stringify(origCategoryIdsSorted)) {
+    changes.categoryIds = product.value.categoryIds
+  }
 
   // 이용안내 / 환불규정 / 샘플URL
   if (product.value.guide !== orig.guide) changes.guide = product.value.guide || null
@@ -672,19 +715,13 @@ const fetchProduct = async () => {
     const response = await $api.get(`/admin/products/${productId.value}`)
     const data = response.data || response
 
-    // 디버깅: API 응답에서 guide/policy 확인
-    console.log('=== 상품 조회 API 응답 ===')
-    console.log('guide:', data.guide)
-    console.log('policy:', data.policy)
-    console.log('전체 응답:', data)
-
     // 백엔드 응답 데이터를 현재 product 구조에 매핑
     product.value = {
       name: data.name || '',
       costPrice: data.costPrice ?? 0,
       description: data.summary || '',
       detailContent: data.description || '', // HTML 콘텐츠
-      categoryId: data.category?.id || '',
+      categoryIds: data.categoryIds || (data.category?.id ? [data.category.id] : []),
       price: data.regularPrice ?? 0, // 정가
       hasDiscount: (data.discountValue ?? 0) > 0,
       discountType: data.discountType || 'percent',
@@ -925,34 +962,83 @@ onMounted(() => {
         <UiCard>
           <template #header>
             <h3 class="font-semibold text-neutral-900">카테고리</h3>
-            <p class="text-sm text-neutral-500 mt-1">상품이 속할 카테고리를 선택하세요.</p>
+            <p class="text-sm text-neutral-500 mt-1">상품이 속할 카테고리를 선택하세요. (다중 선택 가능)</p>
           </template>
 
-          <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">
-              카테고리 선택 <span class="text-error-500">*</span>
-            </label>
-            <select
-              v-model="product.categoryId"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            >
-              <option value="">카테고리를 선택하세요</option>
-              <template v-for="option in categoryOptions" :key="option.id">
-                <option
-                  v-if="option.isParent"
-                  :value="option.id"
-                  disabled
-                  class="font-semibold text-neutral-900 bg-neutral-100"
+          <div class="space-y-4">
+            <!-- 대분류 탭 -->
+            <div>
+              <label class="block text-sm font-medium text-neutral-700 mb-2">
+                대분류 선택 <span class="text-error-500">*</span>
+              </label>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="parent in categories"
+                  :key="parent.id"
+                  type="button"
+                  :class="[
+                    'px-4 py-2 border rounded-lg text-sm font-medium transition-colors',
+                    selectedParentCategoryId === parent.id
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-neutral-200 text-neutral-600 hover:border-neutral-300',
+                  ]"
+                  @click="selectParentCategory(parent.id)"
                 >
-                  {{ option.name }}
-                </option>
-                <option v-else :value="option.id">
-                  {{ option.name }}
-                </option>
-              </template>
-            </select>
-            <p class="text-xs text-neutral-500 mt-2">
-              선택된 카테고리에 따라 상품이 분류됩니다.
+                  {{ parent.name }}
+                  <span
+                    v-if="getSelectedCountInParent(parent.id) > 0"
+                    class="ml-1 px-1.5 py-0.5 bg-primary-500 text-white text-xs rounded-full"
+                  >
+                    {{ getSelectedCountInParent(parent.id) }}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 소분류 칩 -->
+            <div v-if="childCategories.length > 0">
+              <p class="block text-sm font-medium text-neutral-700 mb-2">
+                소분류 선택
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="child in childCategories"
+                  :key="child.id"
+                  type="button"
+                  :class="[
+                    'px-3 py-1.5 border rounded-full text-sm cursor-pointer transition-colors',
+                    isCategorySelected(child.id)
+                      ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
+                      : 'border-neutral-200 text-neutral-600 hover:border-neutral-300',
+                  ]"
+                  @click="toggleCategory(child.id)"
+                >
+                  {{ child.name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 선택된 카테고리 표시 -->
+            <div v-if="product.categoryIds.length > 0" class="pt-2 border-t border-neutral-100">
+              <p class="text-xs text-neutral-500 mb-2">선택된 카테고리 ({{ product.categoryIds.length }}개)</p>
+              <div class="flex flex-wrap gap-1">
+                <span
+                  v-for="catId in product.categoryIds"
+                  :key="catId"
+                  class="inline-flex items-center gap-1 px-2 py-1 bg-primary-100 text-primary-700 text-xs rounded-full"
+                >
+                  {{ categories.flatMap(p => p.children || []).find(c => c.id === catId)?.name || catId }}
+                  <button type="button" class="hover:text-primary-900" @click="toggleCategory(catId)">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              </div>
+            </div>
+
+            <p v-else class="text-xs text-neutral-400">
+              대분류를 선택한 후 소분류를 선택해주세요.
             </p>
           </div>
         </UiCard>

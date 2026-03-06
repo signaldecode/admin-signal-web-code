@@ -50,12 +50,6 @@ const users = ref([])
 
 // 벌크 선택
 const selectedIds = ref([])
-const isAllSelected = computed(() => {
-  return users.value.length > 0 && selectedIds.value.length === users.value.length
-})
-const isPartialSelected = computed(() => {
-  return selectedIds.value.length > 0 && selectedIds.value.length < users.value.length
-})
 
 // 등급 변경 모달
 const showGradeModal = ref(false)

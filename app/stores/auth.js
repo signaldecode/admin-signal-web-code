@@ -2,9 +2,14 @@
  * Auth Store
  * JWT HttpOnly Cookie 기반 인증 상태 관리
  * - 프론트에서 토큰에 직접 접근하지 않음
- * - 인증 상태는 /auth/me API 응답으로 판단
+ * - 인증 상태는 /auth/admin/me API 응답으로 판단
+ * - 토큰명: admin_access_token / admin_refresh_token (HttpOnly Cookie)
+ * - 허용 역할: ADMIN, STAFF
  */
 import { defineStore } from 'pinia'
+
+// 관리자 허용 역할
+const ALLOWED_ROLES = ['ADMIN', 'STAFF']
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -14,6 +19,8 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: null,
     // 권한 목록
     permissions: [],
+    // 유저 역할
+    role: null,
     // 로딩 상태
     isLoading: false,
     // 에러
@@ -47,6 +54,16 @@ export const useAuthStore = defineStore('auth', {
      * 허용된 테넌트 목록 (멀티테넌트 확장 대비)
      */
     allowedTenants: (state) => state.user?.tenants || [],
+
+    /**
+     * 관리자 역할 여부 (ADMIN 또는 STAFF)
+     */
+    isAdminRole: (state) => ALLOWED_ROLES.includes(state.role),
+
+    /**
+     * 유저 역할
+     */
+    userRole: (state) => state.role,
   },
 
   actions: {
@@ -60,13 +77,26 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         const { $api } = useNuxtApp()
-        const loginResponse = await $api.post('/auth/login', credentials)
+        await $api.post('/auth/login', credentials)
 
         // Safari 쿠키 설정 대기
         await new Promise(resolve => setTimeout(resolve, 100))
 
         // 로그인 성공 후 유저 정보 조회
-        await this.fetchUser()
+        const fetchResult = await this.fetchUser()
+
+        if (!fetchResult.success) {
+          return fetchResult
+        }
+
+        // 역할 확인 (ADMIN, STAFF만 허용)
+        if (!ALLOWED_ROLES.includes(this.role)) {
+          // 허용되지 않은 역할이면 로그아웃 처리
+          await $api.post('/auth/logout').catch(() => {})
+          this.reset()
+          this.error = '관리자 권한이 없습니다. ADMIN 또는 STAFF 역할이 필요합니다.'
+          return { success: false, error: this.error }
+        }
 
         return { success: true }
       } catch (error) {
@@ -108,11 +138,12 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         const { $api } = useNuxtApp()
-        const response = await $api.get('/auth/me')
+        const response = await $api.get('/auth/admin/me')
 
         // API 응답: { success, data: MyInfoResponse, error, message }
         const userData = response.data
         this.user = userData
+        this.role = userData?.role || null
         this.permissions = userData?.permissions || []
         this.isAuthenticated = true
 
@@ -147,6 +178,7 @@ export const useAuthStore = defineStore('auth', {
     reset() {
       this.user = null
       this.isAuthenticated = false
+      this.role = null
       this.permissions = []
       this.error = null
 

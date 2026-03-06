@@ -58,6 +58,16 @@ export function useAuth() {
   const error = computed(() => authStore.error)
 
   /**
+   * 유저 역할
+   */
+  const role = computed(() => authStore.role)
+
+  /**
+   * 관리자 역할 여부 (ADMIN 또는 STAFF)
+   */
+  const isAdminRole = computed(() => authStore.isAdminRole)
+
+  /**
    * 권한 체크
    * @param {string|string[]} permission - 권한 또는 권한 배열
    * @param {string} mode - 'any' | 'all'
@@ -85,6 +95,8 @@ export function useAuth() {
     isAuthenticated,
     isAuthChecked,
     user,
+    role,
+    isAdminRole,
     isLoading,
     error,
   }

@@ -41,30 +41,40 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  console.log('[Proxy]', method, targetUrl)
+  console.log('[Proxy]', method, targetUrl, 'ENV:', process.env.API_BASE_URL ? 'SET' : 'NOT SET')
 
-  const response = await fetch(targetUrl, fetchOptions)
+  try {
+    const response = await fetch(targetUrl, fetchOptions)
 
-  // 응답 헤더에서 Set-Cookie 추출하여 클라이언트에 전달
-  const setCookieHeader = response.headers.getSetCookie?.() || response.headers.get('set-cookie')
-  if (setCookieHeader) {
-    if (Array.isArray(setCookieHeader)) {
-      setCookieHeader.forEach(cookie => {
-        appendResponseHeader(event, 'Set-Cookie', cookie)
-      })
-    } else {
-      appendResponseHeader(event, 'Set-Cookie', setCookieHeader)
+    // 응답 헤더에서 Set-Cookie 추출하여 클라이언트에 전달
+    const setCookieHeader = response.headers.getSetCookie?.() || response.headers.get('set-cookie')
+    if (setCookieHeader) {
+      if (Array.isArray(setCookieHeader)) {
+        setCookieHeader.forEach(cookie => {
+          appendResponseHeader(event, 'Set-Cookie', cookie)
+        })
+      } else {
+        appendResponseHeader(event, 'Set-Cookie', setCookieHeader)
+      }
+    }
+
+    // 응답 상태 코드 설정
+    setResponseStatus(event, response.status)
+
+    // JSON 응답 반환
+    const contentType = response.headers.get('content-type')
+    if (contentType && contentType.includes('application/json')) {
+      return await response.json()
+    }
+
+    return await response.text()
+  } catch (error) {
+    console.error('[Proxy Error]', error.message, 'URL:', targetUrl)
+    setResponseStatus(event, 500)
+    return {
+      error: 'Proxy Error',
+      message: error.message,
+      targetUrl
     }
   }
-
-  // 응답 상태 코드 설정
-  setResponseStatus(event, response.status)
-
-  // JSON 응답 반환
-  const contentType = response.headers.get('content-type')
-  if (contentType && contentType.includes('application/json')) {
-    return await response.json()
-  }
-
-  return await response.text()
 })

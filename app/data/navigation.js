@@ -91,7 +91,7 @@ export const navigationItems = [
     children: [
       { id: 'settings-general', label: '기본 설정', to: '/admin/settings' },
       { id: 'settings-policies', label: '정책 설정', to: '/admin/settings/policies' },
-      // { id: 'settings-admins', label: '관리자 계정', to: '/admin/settings/admins' },
+      { id: 'settings-admins', label: '관리자 계정', to: '/admin/settings/admins' },
     ],
   },
 ]

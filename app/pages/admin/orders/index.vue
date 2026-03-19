@@ -45,23 +45,36 @@ const showStatusModal = ref(false)
 const selectedStatus = ref('')
 const isChangingStatus = ref(false)
 
-// 주문 상태 옵션 (필터용)
-const statusOptions = [
-  { value: 'PENDING', label: '입금대기' },
-  { value: 'PAID', label: '결제완료' },
-  { value: 'PREPARING', label: '상품준비중' },
-  { value: 'SHIPPING', label: '배송중' },
-  { value: 'DELIVERED', label: '배송완료' },
-  { value: 'CONFIRMED', label: '구매확정' },
-  { value: 'CANCELLED', label: '주문취소' },
-  { value: 'REFUNDED', label: '환불완료' },
-  { value: 'RETURN_REQUESTED', label: '반품요청' },
-  { value: 'RETURN_IN_PROGRESS', label: '반품진행중' },
-  { value: 'RETURN_COMPLETED', label: '반품완료' },
-  { value: 'EXCHANGE_REQUESTED', label: '교환요청' },
-  { value: 'EXCHANGE_IN_PROGRESS', label: '교환진행중' },
-  { value: 'EXCHANGE_COMPLETED', label: '교환완료' },
-]
+// 주문 상태 옵션 (API에서 조회)
+const statusOptions = ref([])
+
+const fetchStatusOptions = async () => {
+  try {
+    const response = await $api.get('/admin/orders/statuses')
+    const data = response.data || response
+    statusOptions.value = Array.isArray(data)
+      ? data.map((item) => ({ value: item.status || item.value, label: item.label || item.name || item.status }))
+      : []
+  } catch {
+    // 실패 시 기본값 사용
+    statusOptions.value = [
+      { value: 'PENDING', label: '입금대기' },
+      { value: 'PAID', label: '결제완료' },
+      { value: 'PREPARING', label: '상품준비중' },
+      { value: 'SHIPPING', label: '배송중' },
+      { value: 'DELIVERED', label: '배송완료' },
+      { value: 'CONFIRMED', label: '구매확정' },
+      { value: 'CANCELLED', label: '주문취소' },
+      { value: 'REFUNDED', label: '환불완료' },
+      { value: 'RETURN_REQUESTED', label: '반품요청' },
+      { value: 'RETURN_IN_PROGRESS', label: '반품진행중' },
+      { value: 'RETURN_COMPLETED', label: '반품완료' },
+      { value: 'EXCHANGE_REQUESTED', label: '교환요청' },
+      { value: 'EXCHANGE_IN_PROGRESS', label: '교환진행중' },
+      { value: 'EXCHANGE_COMPLETED', label: '교환완료' },
+    ]
+  }
+}
 
 // 주문 상태 매핑
 const statusMap = {
@@ -237,6 +250,7 @@ onMounted(() => {
   if (route.query.keyword) searchKeyword.value = route.query.keyword
   if (route.query.status) filterStatus.value = route.query.status
   if (route.query.page) currentPage.value = parseInt(route.query.page) || 1
+  fetchStatusOptions()
   fetchOrders()
 })
 </script>

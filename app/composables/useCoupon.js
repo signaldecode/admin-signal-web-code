@@ -123,6 +123,15 @@ export function useCoupon() {
   }
 
   /**
+   * 쿠폰 노출/비노출 토글
+   * @param {number} id - 쿠폰 ID
+   */
+  const toggleCouponVisibility = async (id) => {
+    const response = await patch(`/admin/coupons/${id}/visibility`)
+    return response.data
+  }
+
+  /**
    * 미사용 쿠폰 회수 (RECALLED 처리)
    * @param {number} id - 쿠폰 ID
    */
@@ -183,6 +192,7 @@ export function useCoupon() {
     updateCoupon,
     deleteCoupon,
     updateCouponStatus,
+    toggleCouponVisibility,
     recallCoupon,
     // Helpers
     getEditableFields,

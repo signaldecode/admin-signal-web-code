@@ -116,6 +116,30 @@ const toggleTag = (tagId) => {
 // 태그 선택 여부 확인
 const isTagSelected = (tagId) => selectedTagIds.value.includes(tagId)
 
+// 태그 생성
+const newTagName = ref('')
+const isCreatingTag = ref(false)
+const createNewTag = async () => {
+  const name = newTagName.value.trim()
+  if (!name) return
+  isCreatingTag.value = true
+  try {
+    const newTag = await catalogStore.createTag($api, name)
+    selectedTagIds.value.push(newTag.id)
+    newTagName.value = ''
+    uiStore.showToast('태그가 생성되었습니다.', 'success')
+  } catch (error) {
+    const status = error?.response?.status || error?.status
+    if (status === 409) {
+      uiStore.showToast('이미 존재하는 태그명입니다.', 'error')
+    } else {
+      uiStore.showToast('태그 생성에 실패했습니다.', 'error')
+    }
+  } finally {
+    isCreatingTag.value = false
+  }
+}
+
 // 대표 이미지
 const mainImage = ref(null)
 
@@ -1570,6 +1594,23 @@ onMounted(() => {
               <p v-if="tags.length === 0" class="text-sm text-neutral-500">
                 등록된 태그가 없습니다.
               </p>
+            </div>
+            <div class="flex items-center gap-2 mt-3">
+              <input
+                v-model="newTagName"
+                type="text"
+                class="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                placeholder="새 태그명 입력"
+                @keyup.enter="createNewTag"
+              >
+              <button
+                type="button"
+                class="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="!newTagName.trim() || isCreatingTag"
+                @click="createNewTag"
+              >
+                {{ isCreatingTag ? '생성 중...' : '태그 추가' }}
+              </button>
             </div>
           </div>
 

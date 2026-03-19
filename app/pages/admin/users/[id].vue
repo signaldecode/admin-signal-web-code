@@ -27,6 +27,32 @@ const isSavingMemo = ref(false)
 // 회원 정보
 const user = ref(null)
 
+// 포인트 이력
+const allPointHistories = ref([])
+const pointPage = ref(1)
+const pointPerPage = 20
+const isLoadingPoints = ref(false)
+
+// 클라이언트 사이드 페이징
+const pointTotalItems = computed(() => allPointHistories.value.length)
+const pointTotalPages = computed(() => Math.ceil(pointTotalItems.value / pointPerPage))
+const pointHistories = computed(() => {
+  const start = (pointPage.value - 1) * pointPerPage
+  return allPointHistories.value.slice(start, start + pointPerPage)
+})
+
+// 포인트 조정 모달
+const showPointModal = ref(false)
+const isAdjustingPoint = ref(false)
+const pointForm = ref({
+  amount: '',
+  reason: '',
+})
+const pointFormErrors = ref({
+  amount: '',
+  reason: '',
+})
+
 // 최근 주문 내역 (user 응답에 포함)
 const recent_orders = computed(() => user.value?.recent_orders || [])
 
@@ -63,6 +89,99 @@ const fetchUser = async () => {
   }
 }
 
+// 포인트 이력 로드
+const fetchPointHistories = async () => {
+  isLoadingPoints.value = true
+
+  try {
+    const response = await $api.get(`/admin/users/${userId.value}/points`)
+    allPointHistories.value = response.data.history || []
+    // 현재 보유 포인트도 갱신
+    if (user.value && response.data.current !== undefined) {
+      user.value.current_point = response.data.current
+    }
+    pointPage.value = 1
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '포인트 이력을 불러오는데 실패했습니다.',
+    })
+  } finally {
+    isLoadingPoints.value = false
+  }
+}
+
+// 포인트 조정 모달 열기
+const openPointModal = () => {
+  pointForm.value = { amount: '', reason: '' }
+  pointFormErrors.value = { amount: '', reason: '' }
+  showPointModal.value = true
+}
+
+// 포인트 조정 유효성 검사
+const validatePointForm = () => {
+  pointFormErrors.value = { amount: '', reason: '' }
+  let valid = true
+
+  const amount = Number(pointForm.value.amount)
+  if (!pointForm.value.amount || isNaN(amount) || amount === 0) {
+    pointFormErrors.value.amount = '0이 아닌 포인트 금액을 입력해주세요.'
+    valid = false
+  }
+
+  if (!pointForm.value.reason.trim()) {
+    pointFormErrors.value.reason = '조정 사유를 입력해주세요.'
+    valid = false
+  }
+
+  return valid
+}
+
+// 포인트 조정 실행
+const handlePointAdjust = async () => {
+  if (!validatePointForm()) return
+
+  isAdjustingPoint.value = true
+
+  try {
+    await $api.post(`/admin/users/${userId.value}/points`, {
+      amount: Number(pointForm.value.amount),
+      reason: pointForm.value.reason.trim(),
+    })
+
+    showPointModal.value = false
+    uiStore.showToast({
+      type: 'success',
+      message: '포인트가 조정되었습니다.',
+    })
+
+    // 포인트 이력 & 잔액 새로고침
+    await fetchPointHistories()
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '포인트 조정에 실패했습니다.',
+    })
+  } finally {
+    isAdjustingPoint.value = false
+  }
+}
+
+// 활성 탭
+const activeTab = ref('info')
+const tabs = [
+  { id: 'info', label: '기본 정보' },
+  { id: 'orders', label: '주문 내역' },
+  { id: 'point', label: '포인트' },
+]
+
+// 포인트 탭 활성화 시 이력 로드
+watch(activeTab, (tab) => {
+  if (tab === 'point' && allPointHistories.value.length === 0) {
+    fetchPointHistories()
+  }
+})
+
 onMounted(() => {
   fetchUser()
 })
@@ -80,6 +199,15 @@ const statusMap = {
   INACTIVE: { label: '비활성', variant: 'warning' },
   SUSPENDED: { label: '정지', variant: 'error' },
   WITHDRAWN: { label: '탈퇴', variant: 'neutral' },
+}
+
+// 포인트 거래 유형 뱃지
+const transactionTypeMap = {
+  EARN: { label: '적립', variant: 'success' },
+  USE: { label: '사용', variant: 'primary' },
+  EXPIRE: { label: '만료', variant: 'warning' },
+  CANCEL: { label: '취소', variant: 'error' },
+  ADMIN: { label: '수동조정', variant: 'info' },
 }
 
 // 주문 상태 뱃지
@@ -212,13 +340,6 @@ const goToOrder = (orderId) => {
   router.push(`/admin/orders/${orderId}`)
 }
 
-// 활성 탭
-const activeTab = ref('info')
-const tabs = [
-  { id: 'info', label: '기본 정보' },
-  { id: 'orders', label: '주문 내역' },
-  { id: 'point', label: '포인트' },
-]
 </script>
 
 <template>
@@ -451,17 +572,153 @@ const tabs = [
       </div>
 
       <!-- Tab Content: 포인트 -->
-      <div v-if="activeTab === 'point'">
+      <div v-if="activeTab === 'point'" class="space-y-6">
+        <!-- 보유 포인트 & 조정 버튼 -->
         <UiCard>
-          <div class="text-center py-8">
-            <p class="text-3xl font-bold text-primary-600 mb-2">{{ formatCurrency(user.current_point || 0) }}</p>
-            <p class="text-neutral-600">현재 보유 포인트</p>
-          </div>
-          <div class="border-t border-neutral-200 pt-4">
-            <p class="text-sm text-neutral-500 text-center">포인트 적립/사용 내역은 추후 구현 예정</p>
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="text-center sm:text-left">
+              <p class="text-sm text-neutral-500 mb-1">현재 보유 포인트</p>
+              <p class="text-3xl font-bold text-primary-600">{{ formatCurrency(user.current_point || 0) }}</p>
+            </div>
+            <UiButton variant="primary" size="md" @click="openPointModal">
+              포인트 수동 조정
+            </UiButton>
           </div>
         </UiCard>
+
+        <!-- 포인트 이력 -->
+        <UiCard padding="none">
+          <template #header>
+            <h3 class="font-semibold text-neutral-900">포인트 이력</h3>
+          </template>
+
+          <!-- Loading -->
+          <div v-if="isLoadingPoints" class="flex items-center justify-center py-12">
+            <UiSpinner size="md" />
+          </div>
+
+          <template v-else>
+            <!-- Desktop Table -->
+            <div class="hidden md:block overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr class="border-b border-neutral-200 bg-neutral-50">
+                    <th class="text-left py-3 px-4 text-sm font-medium text-neutral-600">일시</th>
+                    <th class="text-center py-3 px-4 text-sm font-medium text-neutral-600">유형</th>
+                    <th class="text-right py-3 px-4 text-sm font-medium text-neutral-600">변동 포인트</th>
+                    <th class="text-right py-3 px-4 text-sm font-medium text-neutral-600">변동 후 잔액</th>
+                    <th class="text-left py-3 px-4 text-sm font-medium text-neutral-600">사유</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="history in pointHistories"
+                    :key="history.id"
+                    class="border-b border-neutral-100"
+                  >
+                    <td class="py-3 px-4 text-sm text-neutral-600">{{ formatDate(history.created_at) }}</td>
+                    <td class="py-3 px-4 text-center">
+                      <UiBadge :variant="transactionTypeMap[history.transaction_type]?.variant || 'neutral'" size="sm">
+                        {{ transactionTypeMap[history.transaction_type]?.label || history.transaction_type }}
+                      </UiBadge>
+                    </td>
+                    <td class="py-3 px-4 text-sm text-right font-medium" :class="history.amount > 0 ? 'text-primary-600' : 'text-error-600'">
+                      {{ history.amount > 0 ? '+' : '' }}{{ formatCurrency(history.amount) }}
+                    </td>
+                    <td class="py-3 px-4 text-sm text-neutral-900 text-right">{{ formatCurrency(history.balance_after) }}</td>
+                    <td class="py-3 px-4 text-sm text-neutral-600">{{ history.reason || '-' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Mobile Cards -->
+            <div class="md:hidden divide-y divide-neutral-100">
+              <div
+                v-for="history in pointHistories"
+                :key="history.id"
+                class="p-4"
+              >
+                <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center gap-2">
+                    <UiBadge :variant="transactionTypeMap[history.transaction_type]?.variant || 'neutral'" size="sm">
+                      {{ transactionTypeMap[history.transaction_type]?.label || history.transaction_type }}
+                    </UiBadge>
+                    <span class="text-xs text-neutral-500">{{ formatDate(history.created_at, 'short') }}</span>
+                  </div>
+                  <span class="text-sm font-medium" :class="history.amount > 0 ? 'text-primary-600' : 'text-error-600'">
+                    {{ history.amount > 0 ? '+' : '' }}{{ formatCurrency(history.amount) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-neutral-600">{{ history.reason || '-' }}</span>
+                  <span class="text-xs text-neutral-500">잔액 {{ formatCurrency(history.balance_after) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <UiEmpty
+              v-if="pointHistories.length === 0"
+              title="포인트 이력이 없습니다"
+            />
+
+            <!-- Pagination -->
+            <div v-if="pointTotalPages > 1" class="p-4 border-t border-neutral-200">
+              <UiPagination
+                :current-page="pointPage"
+                :total-pages="pointTotalPages"
+                :total-items="pointTotalItems"
+                :per-page="pointPerPage"
+                @update:current-page="(page) => pointPage = page"
+              />
+            </div>
+          </template>
+        </UiCard>
       </div>
+
+      <!-- 포인트 수동 조정 모달 -->
+      <UiModal v-model="showPointModal" title="포인트 수동 조정" size="sm" persistent>
+        <div class="space-y-4">
+          <p class="text-sm text-neutral-600">
+            현재 보유 포인트: <span class="font-semibold text-neutral-900">{{ formatCurrency(user?.current_point || 0) }}</span>
+          </p>
+
+          <UiInput
+            v-model="pointForm.amount"
+            type="number"
+            label="조정 포인트"
+            placeholder="예: 1000 (지급) 또는 -1000 (차감)"
+            :error="pointFormErrors.amount"
+            required
+          />
+
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">
+              조정 사유 <span class="text-error-500">*</span>
+            </label>
+            <textarea
+              v-model="pointForm.reason"
+              rows="3"
+              class="w-full px-3 py-2 border rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-0 resize-none"
+              :class="pointFormErrors.reason ? 'border-error-300 focus:border-error-500 focus:ring-error-500' : 'border-neutral-300 focus:border-primary-500 focus:ring-primary-500'"
+              placeholder="포인트 조정 사유를 입력해주세요"
+            />
+            <p v-if="pointFormErrors.reason" class="mt-1 text-sm text-error-600">{{ pointFormErrors.reason }}</p>
+          </div>
+
+          <div v-if="pointForm.amount && !isNaN(Number(pointForm.amount)) && Number(pointForm.amount) !== 0" class="p-3 rounded-lg text-sm" :class="Number(pointForm.amount) > 0 ? 'bg-primary-50 text-primary-700' : 'bg-error-50 text-error-700'">
+            {{ Number(pointForm.amount) > 0 ? '지급' : '차감' }}: {{ formatCurrency(Math.abs(Number(pointForm.amount))) }}
+            → 예상 잔액: {{ formatCurrency((user?.current_point || 0) + Number(pointForm.amount)) }}
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UiButton variant="outline" @click="showPointModal = false" :disabled="isAdjustingPoint">취소</UiButton>
+            <UiButton variant="primary" :loading="isAdjustingPoint" @click="handlePointAdjust">조정 실행</UiButton>
+          </div>
+        </template>
+      </UiModal>
     </template>
 
     <!-- Not Found -->

@@ -68,6 +68,16 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * 태그 생성
+   */
+  const createTag = async ($api, name) => {
+    const response = await $api.post('/admin/tags', { name })
+    const newTag = response.data || response
+    tags.value = [...tags.value, newTag]
+    return newTag
+  }
+
+  /**
    * 회원 등급만 리로드
    */
   const refreshGrades = async ($api) => {
@@ -185,6 +195,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchCatalogData,
     refreshCategories,
     refreshTags,
+    createTag,
     refreshGrades,
     reset,
     // 헬퍼

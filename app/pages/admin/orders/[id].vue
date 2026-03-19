@@ -811,12 +811,8 @@ const refreshDelivery = async () => {
   isRefreshingDelivery.value = true
 
   try {
-    // 배송중인 shipment들을 병렬로 갱신
-    await Promise.all(
-      inTransitShipments.map((s) =>
-        $api.post(`/admin/delivery/track/shipment/${s.shipmentId}/refresh`)
-      )
-    )
+    // 주문 단위로 배송 추적 일괄 갱신
+    await $api.post(`/admin/delivery/track/order/${orderId.value}/refresh`)
 
     // 주문 정보 새로고침
     await fetchOrder()
